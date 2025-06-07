@@ -40,19 +40,16 @@ def get_receipt_total(trip_duration_days, miles_traveled, total_receipts_amount,
     # --- Original logic for all other trips ---
     if trip_duration_days == 1 and total_receipts_amount > 500:
         path = "ONE_DAY_HIGH_RECEIPT_MULTIPLIER"
-        return total_receipts_amount * 0.5, 0, path
+        return total_receipts_amount * config.get("one_day_high_receipt_multiplier", 0.6), 0, path
     if trip_duration_days == 2 and total_receipts_amount > 500:
         path = "TWO_DAY_HIGH_RECEIPT_MULTIPLIER"
-        return total_receipts_amount * 0.6, 0, path
+        return total_receipts_amount * config.get("two_day_high_receipt_multiplier", 0.7), 0, path
 
     daily_spending_limit = 0
-    if trip_duration_days == 3:
-        daily_spending_limit = 200
-    elif 1 <= trip_duration_days <= 3:
+    if 1 <= trip_duration_days <= 3:
         daily_spending_limit = 75
     elif 4 <= trip_duration_days <= 6:
-        # This was hardcoded in the baseline version that worked
-        daily_spending_limit = config["receipt_cap_4_6_days"] 
+        daily_spending_limit = config["receipt_cap_4_6_days"]
     
     reimbursable_receipts = total_receipts_amount
     if trip_duration_days > 0 and daily_spending_limit > 0:
@@ -61,16 +58,25 @@ def get_receipt_total(trip_duration_days, miles_traveled, total_receipts_amount,
             path = "DAILY_SPENDING_LIMIT_APPLIED"
             reimbursable_receipts = daily_spending_limit * trip_duration_days
 
-    tier_1_threshold = config.get("receipt_tier_1_threshold", 800)
+    tier_1_threshold = config.get("receipt_tier_1_threshold", 820)
     tier_1_pct = config.get("receipt_tier_1_percentage", 0.6)
     tier_2_pct = config.get("receipt_tier_2_percentage", 0.28)
+    
+    # --- Tiered standard percentage based on trip duration ---
+    if 1 <= trip_duration_days <= 3:
+        standard_pct = config.get("standard_receipt_pct_1_3_days", 0.55)
+    elif 4 <= trip_duration_days <= 6:
+        standard_pct = config.get("standard_receipt_pct_4_6_days", 0.6)
+    else:
+        # Fallback for other durations (e.g., >= 7, but not hitting the tiered logic above)
+        standard_pct = config.get("standard_receipt_pct", 0.55)
 
     if trip_duration_days >= 7 and reimbursable_receipts > tier_1_threshold:
         path = "TIERED_RECEIPT_OVER_600"
         receipt_total = tier_1_threshold * tier_1_pct + (reimbursable_receipts - tier_1_threshold) * tier_2_pct
     elif reimbursable_receipts > 20:
         path = "STANDARD_80_PCT"
-        receipt_total = reimbursable_receipts * tier_1_pct
+        receipt_total = reimbursable_receipts * standard_pct
     else:
         path = "ZEROED_RECEIPT_UNDER_20"
         receipt_total = 0
@@ -90,20 +96,33 @@ def get_efficiency_bonus(trip_duration_days, miles_traveled):
 
 # --- Configuration (from our best run) ---
 DEFAULT_CONFIG = {
-    "extreme_day_receipt_threshold": 1800,
-    "extreme_day_high_receipt_pct": 0.4,
+    "extreme_day_receipt_threshold": 1600.0,
+    "extreme_day_high_receipt_pct": 0.5,
     "extreme_day_low_receipt_multiplier": 0.6,
     "per_diem_rate_10_plus_days": 70, # Tuned
     "per_diem_rate_14_plus_days": 55, # Tuned
-    "receipt_cap_4_6_days": 250, # Tuned
+    "receipt_cap_4_6_days": 250, # Reverting this change
     "high_cost_receipt_percentage": 0.25,
-    "short_trip_high_receipt_pct": 0.48, # Fine-tuned from 0.5
+    "short_trip_high_receipt_pct": 0.5, 
+    "one_day_high_receipt_multiplier": 0.6,
+    "two_day_high_receipt_multiplier": 0.7,
     "receipt_tier_1_threshold": 820,
     "receipt_tier_1_percentage": 0.6,
     "receipt_tier_2_percentage": 0.28,
-    "vacation_penalty_enabled": False, # Proven ineffective
-    "vacation_penalty_duration_threshold": 12, # Best found, but still not good
-    "vacation_penalty_miles_per_day_threshold": 20, # Best found, but still not good
+    "standard_receipt_pct": 0.4,
+    "standard_receipt_pct_1_3_days": 0.55,
+    "standard_receipt_pct_4_6_days": 0.6000000000000001,
+    "per_diem_rate_long_trip": 60,
+    "receipt_cap_long_trip_low": 110,
+    "receipt_cap_long_trip_high": 110.0,
+    "high_spend_threshold": 130.0,
+    "pct_first_600": 0.75,
+    "pct_above_600": 0.7000000000000001,
+    "vacation_penalty_enabled": True,
+    "vacation_penalty_duration_threshold": 8,
+    "vacation_penalty_spend_threshold": 150.0,
+    "vacation_penalty_per_diem_pct": 0.7,
+    "vacation_penalty_receipt_pct": 0.44999999999999996,
 }
 
 def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_amount, debug=False, config=DEFAULT_CONFIG):
@@ -121,26 +140,76 @@ def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_a
         
         if debug:
              return {
-                "path": path, "per_diem": 0, "mileage": 0, "receipts$": computed_total, "penalty": 0, "eff_bonus": 0,
+                "path": path, "receipt_path": None, "per_diem": 0, "mileage": 0, "receipts$": computed_total, "penalty": 0, "eff_bonus": 0,
                 "grand": computed_total
             }
         return computed_total
 
-    # --- Vacation Penalty Logic ---
-    miles_per_day = miles_traveled / trip_duration_days if trip_duration_days > 0 else 0
+    # --- Vacation Penalty Logic (New Implementation) ---
+    daily_spend = total_receipts_amount / trip_duration_days if trip_duration_days > 0 else 0
     
     vacation_penalty_active = (
         config.get("vacation_penalty_enabled", False) and
-        trip_duration_days >= config.get("vacation_penalty_duration_threshold", 8) and
-        miles_per_day < config.get("vacation_penalty_miles_per_day_threshold", 50)
+        trip_duration_days >= 8 and # Explicitly setting to 8+ days
+        daily_spend > config.get("vacation_penalty_spend_threshold", 120)
     )
 
     if vacation_penalty_active:
-        path = "VACATION_PENALTY"
-        per_diem_total = 0
-    else:
+        path = "VACATION_PENALTY_HIGH_SPEND"
+        
+        # This path should be self-contained and not call other complex logic
         per_diem_total = get_per_diem_total(trip_duration_days, miles_traveled, total_receipts_amount, config)
+        mileage_total = get_mileage_total(trip_duration_days, miles_traveled)
+        
+        # Apply a simple, harsh penalty directly to the main components
+        final_per_diem = per_diem_total * config.get("vacation_penalty_per_diem_pct", 0.5)
+        final_receipts = total_receipts_amount * config.get("vacation_penalty_receipt_pct", 0.5) # Use raw receipts
+        
+        efficiency_bonus = get_efficiency_bonus(trip_duration_days, miles_traveled)
+        computed_total = round(final_per_diem + mileage_total + final_receipts + efficiency_bonus, 2)
+        
+        if debug:
+            return {
+                "path": path, "receipt_path": "N/A", "miles_per_day": miles_traveled / trip_duration_days if trip_duration_days > 0 else 0,
+                "per_diem": final_per_diem, "mileage": mileage_total, 
+                "receipts$": final_receipts, "penalty": 0, "eff_bonus": efficiency_bonus, "grand": computed_total
+            }
+        return computed_total
+        
+    # --- New Two-Tier Logic for Long Trips ---
+    if trip_duration_days >= 10:
+        path = "LONG_TRIP_TWO_TIER"
+        
+        per_diem_total = trip_duration_days * config["per_diem_rate_long_trip"]
+        mileage_total = get_mileage_total(trip_duration_days, miles_traveled)
+        efficiency_bonus = get_efficiency_bonus(trip_duration_days, miles_traveled)
 
+        cap_per_day = (
+            config["receipt_cap_long_trip_high"]
+            if (total_receipts_amount / trip_duration_days) > config["high_spend_threshold"]
+            else config["receipt_cap_long_trip_low"]
+        )
+        max_reimbursable = cap_per_day * trip_duration_days
+        reimbursable = min(total_receipts_amount, max_reimbursable)
+        
+        receipt_total = (
+            min(reimbursable, 600) * config["pct_first_600"]
+            + max(reimbursable - 600, 0) * config["pct_above_600"]
+        )
+
+        computed_total = round(per_diem_total + mileage_total + receipt_total + efficiency_bonus, 2)
+
+        if debug:
+            miles_per_day = miles_traveled / trip_duration_days if trip_duration_days > 0 else 0
+            return {
+                "path": path, "receipt_path": "TWO_TIER_CALC", "miles_per_day": miles_per_day,
+                "per_diem": per_diem_total, "mileage": mileage_total, 
+                "receipts$": receipt_total, "penalty": 0, "eff_bonus": efficiency_bonus, "grand": computed_total
+            }
+        return computed_total
+    
+    # --- Standard Calculation Logic ---
+    per_diem_total = get_per_diem_total(trip_duration_days, miles_traveled, total_receipts_amount, config)
     mileage_total = get_mileage_total(trip_duration_days, miles_traveled)
     receipt_total, penalty, receipt_path = get_receipt_total(trip_duration_days, miles_traveled, total_receipts_amount, config)
     efficiency_bonus = get_efficiency_bonus(trip_duration_days, miles_traveled)
@@ -148,10 +217,11 @@ def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_a
     computed_total = round(per_diem_total + mileage_total + receipt_total + penalty + efficiency_bonus, 2)
 
     if debug:
+        miles_per_day = miles_traveled / trip_duration_days if trip_duration_days > 0 else 0
         return {
             "path": path,
             "receipt_path": receipt_path,
-            "miles_per_day": round(miles_per_day, 2),
+            "miles_per_day": miles_per_day,
             "per_diem": per_diem_total,
             "mileage": mileage_total,
             "receipts$": receipt_total,
@@ -178,6 +248,18 @@ if __name__ == '__main__':
         # Running for testing with public_cases.json
         with open('public_cases.json', 'r') as f:
             cases = json.load(f)
+        
+        if '--filter' in sys.argv:
+            filter_index = sys.argv.index('--filter') + 1
+            if filter_index < len(sys.argv):
+                filter_str = sys.argv[filter_index]
+                original_cases = cases
+                cases = []
+                for case in original_cases:
+                    context = case['input']
+                    if eval(filter_str, {}, context):
+                        cases.append(case)
+                print(f"Filtered to {len(cases)} cases based on: '{filter_str}'")
         
         errors = []
         
