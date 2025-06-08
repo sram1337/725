@@ -113,17 +113,17 @@ def get_mileage_total(trip_duration_days, miles_traveled, config=DEFAULT_CONFIG)
     return miles_traveled * primary_mileage_rate
 
 def get_receipt_total(trip_duration_days, miles_traveled, total_receipts_amount, config):
-    # --- New: Special handling for short, high-cost trips ---
+    # --- This path has been identified as incorrect and is being removed. ---
     path = "STANDARD"
-    is_short_expensive_trip = (
-        trip_duration_days <= 4 and
-        total_receipts_amount > 1000
-    )
-    if is_short_expensive_trip:
-        percentage = config.get("short_trip_high_receipt_pct", DEFAULT_CONFIG["short_trip_high_receipt_pct"])
-        path = "SHORT_TRIP_HIGH_RECEIPT_BONUS"
-        # For these trips, we return a simple percentage and no penalty
-        return total_receipts_amount * percentage, 0, path
+    # is_short_expensive_trip = (
+    #     trip_duration_days <= 4 and
+    #     total_receipts_amount > 1000
+    # )
+    # if is_short_expensive_trip:
+    #     percentage = config.get("short_trip_high_receipt_pct", DEFAULT_CONFIG["short_trip_high_receipt_pct"])
+    #     path = "SHORT_TRIP_HIGH_RECEIPT_BONUS"
+    #     # For these trips, we return a simple percentage and no penalty
+    #     return total_receipts_amount * percentage, 0, path
 
     # --- Original logic for all other trips ---
     if trip_duration_days == 1 and total_receipts_amount > 500:
@@ -202,7 +202,7 @@ def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_a
     
     # --- Input Sanitization ---
     trip_duration_days = clean_and_convert(trip_duration_days, int)
-    miles_traveled = clean_and_convert(miles_traveled, int)
+    miles_traveled = clean_and_convert(miles_traveled, float)
     total_receipts_amount = clean_and_convert(total_receipts_amount, float)
 
     path = "NORMAL"
@@ -327,18 +327,33 @@ def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_a
 
 if __name__ == '__main__':
     if len(sys.argv) == 4:
-        trip_duration_days = int(sys.argv[1])
-        miles_traveled = int(sys.argv[2])
-        total_receipts_amount = float(sys.argv[3])
+        # Pass raw strings to the calculation function, which handles sanitization
+        trip_duration_days = sys.argv[1]
+        miles_traveled = sys.argv[2]
+        total_receipts_amount = sys.argv[3]
         
         reimbursement = calculate_reimbursement(
             trip_duration_days,
             miles_traveled,
             total_receipts_amount
         )
-        print(reimbursement)
+        # Ensure output is formatted to exactly two decimal places
+        print(f"{reimbursement:.2f}")
+    elif len(sys.argv) == 5: # Add a debug mode
+        trip_duration_days = sys.argv[1]
+        miles_traveled = sys.argv[2]
+        total_receipts_amount = sys.argv[3]
+        
+        debug_info = calculate_reimbursement(
+            trip_duration_days,
+            miles_traveled,
+            total_receipts_amount,
+            debug=True,
+            config=DEFAULT_CONFIG
+        )
+        print(json.dumps(debug_info, indent=2))
     else:
-        # Running for testing with public_cases.json
+        # This part is for local testing and analysis, not used by eval.sh
         with open('public_cases.json', 'r') as f:
             cases = json.load(f)
         

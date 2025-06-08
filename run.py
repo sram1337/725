@@ -1,7 +1,5 @@
 import sys
-import json
-import re
-from decimal import Decimal
+from solution import calculate_reimbursement, DEFAULT_CONFIG
 
 # --- Self-Contained Solution for Black Box Challenge ---
 
@@ -159,73 +157,30 @@ def get_efficiency_bonus(trip_duration_days, miles_traveled, config):
     elif mpd < 100 or mpd > 300: return -50
     return 0
 
-# --- Core Calculation Engine ---
-
-def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_amount, config):
-    trip_duration_days = clean_and_convert(trip_duration_days, int)
-    miles_traveled = clean_and_convert(miles_traveled, int)
-    total_receipts_amount = clean_and_convert(total_receipts_amount, float)
-    path = "NORMAL"
-    if trip_duration_days == 1 and miles_traveled > 800:
-        if total_receipts_amount > config["extreme_day_receipt_threshold"]:
-            computed_total = total_receipts_amount * config["extreme_day_high_receipt_pct"]
-        else:
-            computed_total = (miles_traveled + total_receipts_amount) * config["extreme_day_low_receipt_multiplier"]
-        return round_legacy(computed_total)
-    daily_spend = total_receipts_amount / trip_duration_days if trip_duration_days > 0 else 0
-    vacation_penalty_active = (config.get("vacation_penalty_enabled", False) and trip_duration_days >= config["vacation_penalty_duration_threshold"] and daily_spend > config["vacation_penalty_spend_threshold"])
-    if vacation_penalty_active:
-        per_diem_total = get_per_diem_total(trip_duration_days, miles_traveled, total_receipts_amount, config)
-        mileage_total = get_mileage_total(trip_duration_days, miles_traveled, config)
-        final_per_diem = per_diem_total * config.get("vacation_penalty_per_diem_pct", 0.5)
-        final_receipts = total_receipts_amount * config.get("vacation_penalty_receipt_pct", 0.5)
-        efficiency_bonus = get_efficiency_bonus(trip_duration_days, miles_traveled, config)
-        computed_total = final_per_diem + mileage_total + final_receipts + efficiency_bonus
-        return round_legacy(computed_total)
-    if trip_duration_days >= 10:
-        per_diem_total = trip_duration_days * config["per_diem_rate_long_trip"]
-        mileage_total = get_mileage_total(trip_duration_days, miles_traveled, config)
-        efficiency_bonus = get_efficiency_bonus(trip_duration_days, miles_traveled, config)
-        cap_per_day = (config["receipt_cap_long_trip_high"] if (total_receipts_amount / trip_duration_days) > config["high_spend_threshold"] else config["receipt_cap_long_trip_low"])
-        reimbursable = min(total_receipts_amount, cap_per_day * trip_duration_days)
-        low_tier_ceiling = 600
-        sweet_spot_upper = config.get("receipt_sweet_spot_upper_bound", 800)
-        sweet_spot_pct = config.get("receipt_sweet_spot_pct", 0.9)
-        pct_low_tier = 0.80
-        pct_high_tier = 0.50
-        if reimbursable > sweet_spot_upper:
-            receipt_total = (low_tier_ceiling * pct_low_tier) + ((sweet_spot_upper - low_tier_ceiling) * sweet_spot_pct) + ((reimbursable - sweet_spot_upper) * pct_high_tier)
-        elif reimbursable > low_tier_ceiling:
-            receipt_total = (low_tier_ceiling * pct_low_tier) + ((reimbursable - low_tier_ceiling) * sweet_spot_pct)
-        else:
-            receipt_total = reimbursable * pct_low_tier
-        computed_total = per_diem_total + mileage_total + receipt_total + efficiency_bonus
-        return round_legacy(computed_total)
-    per_diem_total = get_per_diem_total(trip_duration_days, miles_traveled, total_receipts_amount, config)
-    mileage_total = get_mileage_total(trip_duration_days, miles_traveled, config)
-    receipt_total, penalty, _ = get_receipt_total(trip_duration_days, miles_traveled, total_receipts_amount, config)
-    efficiency_bonus = get_efficiency_bonus(trip_duration_days, miles_traveled, config)
-    computed_total = per_diem_total + mileage_total + receipt_total + penalty + efficiency_bonus
-    return round_legacy(computed_total)
-
 # --- Main Execution ---
 
 def main():
+    """
+    This script serves as the command-line entry point for the reimbursement calculation.
+    It takes three arguments, calculates the reimbursement, and prints the result.
+    """
     if len(sys.argv) != 4:
         print("Usage: python run.py <trip_duration_days> <miles_traveled> <total_receipts_amount>", file=sys.stderr)
         sys.exit(1)
-    
+
+    # Pass raw string arguments directly to the calculation function.
+    # The robust sanitization logic is inside calculate_reimbursement.
     trip_duration_days = sys.argv[1]
     miles_traveled = sys.argv[2]
     total_receipts_amount = sys.argv[3]
-    
+
     reimbursement = calculate_reimbursement(
         trip_duration_days=trip_duration_days,
         miles_traveled=miles_traveled,
         total_receipts_amount=total_receipts_amount,
         config=DEFAULT_CONFIG
     )
-    
+
     print(f"{reimbursement:.2f}")
 
 if __name__ == "__main__":
