@@ -5,18 +5,41 @@ import numpy as np
 
 # This now represents logical groups of parameters for coordinate descent.
 PARAM_GROUPS = {
-    "Mileage Curvature": [
-        "mileage_breakpoint_1", 
-        "mileage_rate_tier_3"
+    "Per Diem Rates": [
+        "per_diem_rate_10_plus_days",
+        "per_diem_rate_14_plus_days",
+        "per_diem_floor_rate",
+        "per_diem_floor_duration",
     ],
-    "Receipt Sweet Spot": [
-        "receipt_sweet_spot_upper_bound", 
-        "receipt_sweet_spot_pct"
+    "Mileage Rates & Breakpoints": [
+        "mileage_rate_tier_1",
+        "mileage_rate_tier_2",
+        "mileage_rate_tier_3",
+        "mileage_breakpoint_1",
+        "mileage_breakpoint_2",
     ],
-    "Efficiency Bonus": ["eff_slope"],
-    "Short Trip Multipliers": [
+    "Receipt Caps & Percentages": [
+        "receipt_cap_4_6_days",
+        "high_cost_receipt_percentage",
+        "short_trip_high_receipt_pct",
+        "receipt_tier_1_threshold",
+        "receipt_tier_1_percentage",
+        "receipt_tier_2_percentage",
+        "standard_receipt_pct_1_3_days",
+        "standard_receipt_pct_4_6_days",
+    ],
+    "Specific Day Multipliers": [
         "one_day_high_receipt_multiplier",
-        "two_day_high_receipt_multiplier"
+        "one_day_upper_tier_threshold",
+        "one_day_upper_tier_multiplier",
+        "two_day_high_receipt_multiplier",
+        "two_day_upper_tier_threshold",
+        "two_day_upper_tier_multiplier",
+    ],
+    "Extreme Day Logic": [
+        "extreme_day_receipt_threshold",
+        "extreme_day_high_receipt_pct",
+        "extreme_day_low_receipt_multiplier",
     ],
     "Vacation Penalty": [
         "vacation_penalty_duration_threshold",
@@ -29,46 +52,82 @@ PARAM_GROUPS = {
         "receipt_cap_long_trip_low",
         "receipt_cap_long_trip_high",
         "high_spend_threshold",
+        "long_trip_duration_threshold",
     ],
-    "Standard Receipt Tiers": [
-        "receipt_tier_1_threshold",
-        "receipt_tier_1_percentage",
-        "receipt_tier_2_percentage",
-        "standard_receipt_pct",
-        "standard_receipt_pct_1_3_days",
-        "standard_receipt_pct_4_6_days"
-    ]
+    "Main Receipt Logic": [
+        "receipt_low_tier_threshold",
+        "receipt_sweet_spot_lower_bound",
+        "receipt_sweet_spot_upper_bound",
+        "receipt_low_tier_pct",
+        "receipt_standard_pct",
+        "receipt_sweet_spot_pct",
+        "receipt_high_tier_diminishing_pct"
+    ],
+    "Efficiency Bonus": ["eff_slope"],
 }
 
 # Define the search space for each parameter we might want to tune.
 PARAM_SEARCH_SPACE = {
-    "vacation_penalty_duration_threshold": [8, 10, 12, 14],
-    "vacation_penalty_spend_threshold": np.linspace(80, 150, 8),
-    "vacation_penalty_per_diem_pct": np.linspace(0.1, 0.7, 13),
-    "vacation_penalty_receipt_pct": np.linspace(0.1, 0.7, 13),
+    # Per Diem Rates
+    "per_diem_rate_10_plus_days": np.linspace(60, 80, 10),
+    "per_diem_rate_14_plus_days": np.linspace(45, 65, 10),
+    "per_diem_floor_rate": np.linspace(50, 70, 10),
+    "per_diem_floor_duration": [12, 13, 14, 15, 16, 17],
 
-    # --- Other parameters for potential future tuning ---
-    "standard_receipt_pct": np.linspace(0.4, 0.9, 11),
-    "per_diem_rate_long_trip": [25, 40, 50, 60],
-    "receipt_cap_long_trip_low": np.linspace(80, 120, 5),
-    "receipt_cap_long_trip_high": np.linspace(110, 150, 5),
-    "high_spend_threshold": np.linspace(130, 170, 5),
-    "receipt_tier_1_threshold": np.linspace(700, 900, 9),
-    "receipt_tier_1_percentage": np.linspace(0.5, 0.8, 7),
-    "receipt_tier_2_percentage": np.linspace(0.2, 0.5, 7),
-    "short_trip_high_receipt_pct": np.linspace(0.3, 0.7, 9),
-    "extreme_day_receipt_threshold": np.linspace(1500, 2100, 7),
-    "extreme_day_high_receipt_pct": np.linspace(0.2, 0.6, 9),
-    "extreme_day_low_receipt_multiplier": np.linspace(0.4, 0.8, 9),
-    "one_day_high_receipt_multiplier": np.linspace(0.3, 0.7, 9),
-    "two_day_high_receipt_multiplier": np.linspace(0.4, 0.8, 9),
-    "standard_receipt_pct_1_3_days": np.linspace(0.4, 0.8, 9),
-    "standard_receipt_pct_4_6_days": np.linspace(0.4, 0.8, 9),
-    "mileage_breakpoint_1": np.linspace(550, 650, 5),
-    "mileage_rate_tier_3": np.linspace(0.40, 0.44, 5),
-    "receipt_sweet_spot_upper_bound": np.linspace(750, 850, 5),
-    "receipt_sweet_spot_pct": np.linspace(0.85, 0.95, 5),
-    "eff_slope": np.linspace(0.4, 0.6, 5),
+    # Mileage Rates & Breakpoints
+    "mileage_rate_tier_1": np.linspace(0.40, 0.50, 10),
+    "mileage_rate_tier_2": np.linspace(0.35, 0.45, 10),
+    "mileage_rate_tier_3": np.linspace(0.35, 0.45, 10),
+    "mileage_breakpoint_1": np.linspace(500, 700, 10),
+    "mileage_breakpoint_2": np.linspace(750, 850, 10),
+
+    # Receipt Caps & Percentages
+    "receipt_cap_4_6_days": np.linspace(200, 300, 10),
+    "high_cost_receipt_percentage": np.linspace(0.20, 0.30, 10),
+    "short_trip_high_receipt_pct": np.linspace(0.4, 0.6, 10),
+    "receipt_tier_1_threshold": np.linspace(800, 1000, 10),
+    "receipt_tier_1_percentage": np.linspace(0.5, 0.7, 10),
+    "receipt_tier_2_percentage": np.linspace(0.1, 0.3, 10),
+    "standard_receipt_pct_1_3_days": np.linspace(0.50, 0.60, 10),
+    "standard_receipt_pct_4_6_days": np.linspace(0.55, 0.65, 10),
+
+    # Specific Day Multipliers
+    "one_day_high_receipt_multiplier": np.linspace(0.4, 0.6, 10),
+    "one_day_upper_tier_threshold": np.linspace(700, 900, 10),
+    "one_day_upper_tier_multiplier": np.linspace(0.5, 0.7, 10),
+    "two_day_high_receipt_multiplier": np.linspace(0.4, 0.6, 10),
+    "two_day_upper_tier_threshold": np.linspace(700, 900, 10),
+    "two_day_upper_tier_multiplier": np.linspace(0.6, 0.8, 10),
+
+    # Extreme Day Logic
+    "extreme_day_receipt_threshold": np.linspace(1400, 1800, 10),
+    "extreme_day_high_receipt_pct": np.linspace(0.4, 0.6, 10),
+    "extreme_day_low_receipt_multiplier": np.linspace(0.5, 0.7, 10),
+    
+    # Vacation Penalty
+    "vacation_penalty_duration_threshold": [8, 9, 10, 11, 12, 13, 14],
+    "vacation_penalty_spend_threshold": np.linspace(130, 170, 10),
+    "vacation_penalty_per_diem_pct": np.linspace(0.6, 0.8, 10),
+    "vacation_penalty_receipt_pct": np.linspace(0.4, 0.5, 10),
+
+    # Long Trip Tiers
+    "per_diem_rate_long_trip": np.linspace(50, 70, 10),
+    "receipt_cap_long_trip_low": np.linspace(100, 120, 10),
+    "receipt_cap_long_trip_high": np.linspace(110, 130, 10),
+    "high_spend_threshold": np.linspace(130, 150, 10),
+    "long_trip_duration_threshold": [8, 9, 10, 11, 12, 13],
+
+    # Main Receipt Logic
+    "receipt_low_tier_threshold": np.linspace(250, 350, 10),
+    "receipt_sweet_spot_lower_bound": np.linspace(650, 750, 10),
+    "receipt_sweet_spot_upper_bound": np.linspace(700, 800, 10),
+    "receipt_low_tier_pct": np.linspace(0.01, 0.1, 10),
+    "receipt_standard_pct": np.linspace(0.3, 0.5, 10),
+    "receipt_sweet_spot_pct": np.linspace(0.8, 0.9, 10),
+    "receipt_high_tier_diminishing_pct": np.linspace(0.1, 0.3, 10),
+
+    # Efficiency Bonus
+    "eff_slope": np.linspace(0.3, 0.5, 10),
 }
 
 def get_path_errors(config, cases):
@@ -116,7 +175,7 @@ def main():
     last_error, _ = get_path_errors(current_best_config, cases)
     print(f"Starting with baseline average error: {last_error:.2f}")
 
-    MAX_ITERATIONS = 5
+    MAX_ITERATIONS = 10
     MIN_IMPROVEMENT = 0.01
 
     for i in range(MAX_ITERATIONS):

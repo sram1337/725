@@ -6,45 +6,52 @@ import re
 
 # --- Configuration (from our best run) ---
 DEFAULT_CONFIG = {
-    "per_diem_rate_10_plus_days": 70, # Tuned
-    "per_diem_rate_14_plus_days": 55, # Tuned
-    "mileage_rate_tier_1": 0.45,
-    "mileage_rate_tier_2": 0.40,
-    "mileage_rate_tier_3": 0.4,
-    "mileage_breakpoint_1": 650.0,
-    "mileage_breakpoint_2": 800,
-    "receipt_cap_4_6_days": 250, # Reverting this change
-    "high_cost_receipt_percentage": 0.25,
-    "short_trip_high_receipt_pct": 0.5, 
-    "one_day_high_receipt_multiplier": 0.5,
-    "one_day_upper_tier_threshold": 800,
-    "one_day_upper_tier_multiplier": 0.6,
-    "two_day_high_receipt_multiplier": 0.5,
-    "two_day_upper_tier_threshold": 800,
-    "two_day_upper_tier_multiplier": 0.7,
-    "receipt_tier_1_threshold": 900.0,
-    "receipt_tier_1_percentage": 0.6,
-    "receipt_tier_2_percentage": 0.2,
-    "standard_receipt_pct": 0.4,
-    "standard_receipt_pct_1_3_days": 0.55,
-    "standard_receipt_pct_4_6_days": 0.6000000000000001,
-    "per_diem_rate_long_trip": 50,
-    "receipt_cap_long_trip_low": 120.0,
-    "receipt_cap_long_trip_high": 130.0,
-    "high_spend_threshold": 140.0,
-    "receipt_sweet_spot_upper_bound": 850.0,
-    "receipt_sweet_spot_pct": 0.95,
+    "per_diem_rate_10_plus_days": 80.00,
+    "per_diem_rate_14_plus_days": 60.56,
+    "mileage_rate_tier_1": 0.4111,
+    "mileage_rate_tier_2": 0.45,
+    "mileage_rate_tier_3": 0.35,
+    "mileage_breakpoint_1": 522.22,
+    "mileage_breakpoint_2": 750.00,
+    "receipt_cap_4_6_days": 250, # Legacy, not tuned in final run
+    "high_cost_receipt_percentage": 0.25, # Legacy, not tuned
+    "short_trip_high_receipt_pct": 0.5, # Legacy, not tuned
+    "one_day_high_receipt_multiplier": 0.40,
+    "one_day_upper_tier_threshold": 700.00,
+    "one_day_upper_tier_multiplier": 0.5444,
+    "two_day_high_receipt_multiplier": 0.51,
+    "two_day_upper_tier_threshold": 700.00,
+    "two_day_upper_tier_multiplier": 0.60,
+    "receipt_tier_1_threshold": 900.00, # Legacy
+    "receipt_tier_1_percentage": 0.60, # Legacy
+    "receipt_tier_2_percentage": 0.20, # Legacy
+    "standard_receipt_pct_1_3_days": 0.55, # Legacy
+    "standard_receipt_pct_4_6_days": 0.60, # Legacy
+    "per_diem_rate_long_trip": 58.89,
+    "receipt_cap_long_trip_low": 120.00,
+    "receipt_cap_long_trip_high": 110.00,
+    "high_spend_threshold": 150.00,
     "vacation_penalty_enabled": True,
-    "vacation_penalty_duration_threshold": 8,
-    "vacation_penalty_spend_threshold": 150.0,
-    "vacation_penalty_per_diem_pct": 0.6499999999999999,
-    "vacation_penalty_receipt_pct": 0.44999999999999996,
-    "extreme_day_receipt_threshold": 1600.0,
-    "extreme_day_high_receipt_pct": 0.5,
-    "extreme_day_low_receipt_multiplier": 0.6,
-    "eff_slope": 0.4,
-    "per_diem_floor_rate": 60,
-    "per_diem_floor_duration": 15,
+    "vacation_penalty_duration_threshold": 8, # Not changed by tuner
+    "vacation_penalty_spend_threshold": 165.56,
+    "vacation_penalty_per_diem_pct": 0.69,
+    "vacation_penalty_receipt_pct": 0.41,
+    "extreme_day_receipt_threshold": 1755.56,
+    "extreme_day_high_receipt_pct": 0.60,
+    "extreme_day_low_receipt_multiplier": 0.57,
+    "eff_slope": 0.30,
+    "per_diem_floor_rate": 60.00, # Not changed by tuner
+    "per_diem_floor_duration": 15, # Not changed by tuner
+    "long_trip_duration_threshold": 9, # New tunable parameter
+    
+    # New parameters for the 3-tier receipt logic
+    "receipt_low_tier_threshold": 316.67,
+    "receipt_sweet_spot_lower_bound": 750.00,
+    "receipt_sweet_spot_upper_bound": 800.00,
+    "receipt_low_tier_pct": 0.10,
+    "receipt_standard_pct": 0.3444,
+    "receipt_sweet_spot_pct": 0.8111,
+    "receipt_high_tier_diminishing_pct": 0.1889,
 }
 
 def clean_and_convert(val, target_type):
@@ -93,7 +100,7 @@ def get_per_diem_total(trip_duration_days, miles_traveled, total_receipts_amount
 
     return per_diem_total
 
-def get_mileage_total(trip_duration_days, miles_traveled, config=DEFAULT_CONFIG):
+def get_mileage_total(trip_duration_days, miles_traveled, config):
     primary_mileage_rate = 0.58
     
     # Tiered rates based on total mileage
@@ -113,19 +120,47 @@ def get_mileage_total(trip_duration_days, miles_traveled, config=DEFAULT_CONFIG)
     return miles_traveled * primary_mileage_rate
 
 def get_receipt_total(trip_duration_days, miles_traveled, total_receipts_amount, config):
-    # --- This path has been identified as incorrect and is being removed. ---
-    path = "STANDARD"
-    # is_short_expensive_trip = (
-    #     trip_duration_days <= 4 and
-    #     total_receipts_amount > 1000
-    # )
-    # if is_short_expensive_trip:
-    #     percentage = config.get("short_trip_high_receipt_pct", DEFAULT_CONFIG["short_trip_high_receipt_pct"])
-    #     path = "SHORT_TRIP_HIGH_RECEIPT_BONUS"
-    #     # For these trips, we return a simple percentage and no penalty
-    #     return total_receipts_amount * percentage, 0, path
+    # This function is being refactored to implement a new 3-tier receipt logic
+    # based on the "sweet spot" theory from the interviews.
+    path = "TIERED_RECEIPT_LOGIC"
+    
+    # --- Configurable thresholds for the new logic ---
+    low_receipt_threshold = config.get("receipt_low_tier_threshold", 200.0)
+    sweet_spot_lower_bound = config.get("receipt_sweet_spot_lower_bound", 600.0)
+    sweet_spot_upper_bound = config.get("receipt_sweet_spot_upper_bound", 800.0)
+    
+    # --- Configurable percentages for the tiers ---
+    low_tier_pct = config.get("receipt_low_tier_pct", 0.1) # Penalized tier
+    standard_pct = config.get("receipt_standard_pct", 0.5) # The "normal" rate
+    sweet_spot_pct = config.get("receipt_sweet_spot_pct", 0.9) # High reimbursement rate
+    high_tier_diminishing_pct = config.get("receipt_high_tier_diminishing_pct", 0.3) # Diminishing returns
 
-    # --- Original logic for all other trips ---
+    receipt_total = 0
+    penalty = 0
+
+    if total_receipts_amount < low_receipt_threshold:
+        path += "_LOW_TIER_PENALTY"
+        # Apply a simple low percentage for small amounts, plus the old penalty logic.
+        receipt_total = total_receipts_amount * low_tier_pct
+        penalty = -50 if 0 < total_receipts_amount <= 20 else 0
+
+    elif low_receipt_threshold <= total_receipts_amount < sweet_spot_lower_bound:
+        path += "_STANDARD_TIER"
+        receipt_total = total_receipts_amount * standard_pct
+
+    elif sweet_spot_lower_bound <= total_receipts_amount <= sweet_spot_upper_bound:
+        path += "_SWEET_SPOT_TIER"
+        # This tier gets the most favorable reimbursement rate
+        receipt_total = total_receipts_amount * sweet_spot_pct
+
+    else: # total_receipts_amount > sweet_spot_upper_bound
+        path += "_HIGH_TIER_DIMINISHING"
+        # Calculate reimbursement up to the sweet spot, then apply diminishing returns
+        receipt_total = (sweet_spot_upper_bound * sweet_spot_pct) + \
+                        ((total_receipts_amount - sweet_spot_upper_bound) * high_tier_diminishing_pct)
+
+    # The existing logic for 1-day and 2-day high-receipt trips might still be valid
+    # as separate, overriding rules. We will keep them for now.
     if trip_duration_days == 1 and total_receipts_amount > 500:
         upper_tier_threshold = config.get("one_day_upper_tier_threshold", 800)
         if total_receipts_amount > upper_tier_threshold:
@@ -146,46 +181,9 @@ def get_receipt_total(trip_duration_days, miles_traveled, total_receipts_amount,
             multiplier = config.get("two_day_high_receipt_multiplier", 0.7)
         return total_receipts_amount * multiplier, 0, path
 
-    daily_spending_limit = 0
-    if 1 <= trip_duration_days <= 3:
-        daily_spending_limit = 75
-    elif 4 <= trip_duration_days <= 6:
-        daily_spending_limit = config["receipt_cap_4_6_days"]
-    
-    reimbursable_receipts = total_receipts_amount
-    if trip_duration_days > 0 and daily_spending_limit > 0:
-        daily_spending = total_receipts_amount / trip_duration_days
-        if daily_spending > daily_spending_limit:
-            path = "DAILY_SPENDING_LIMIT_APPLIED"
-            reimbursable_receipts = daily_spending_limit * trip_duration_days
-
-    tier_1_threshold = config.get("receipt_tier_1_threshold", 820)
-    tier_1_pct = config.get("receipt_tier_1_percentage", 0.6)
-    tier_2_pct = config.get("receipt_tier_2_percentage", 0.28)
-    
-    # --- Tiered standard percentage based on trip duration ---
-    if 1 <= trip_duration_days <= 3:
-        standard_pct = config.get("standard_receipt_pct_1_3_days", 0.55)
-    elif 4 <= trip_duration_days <= 6:
-        standard_pct = config.get("standard_receipt_pct_4_6_days", 0.6)
-    else:
-        # Fallback for other durations (e.g., >= 7, but not hitting the tiered logic above)
-        standard_pct = config.get("standard_receipt_pct", 0.55)
-
-    if trip_duration_days >= 7 and reimbursable_receipts > tier_1_threshold:
-        path = "TIERED_RECEIPT_OVER_600"
-        receipt_total = tier_1_threshold * tier_1_pct + (reimbursable_receipts - tier_1_threshold) * tier_2_pct
-    elif reimbursable_receipts > 20:
-        path = "STANDARD_80_PCT"
-        receipt_total = reimbursable_receipts * standard_pct
-    else:
-        path = "ZEROED_RECEIPT_UNDER_20"
-        receipt_total = 0
-
-    penalty = -50 if 0 < total_receipts_amount <= 20 else 0
     return receipt_total, penalty, path
 
-def get_efficiency_bonus(trip_duration_days, miles_traveled, config=DEFAULT_CONFIG):
+def get_efficiency_bonus(trip_duration_days, miles_traveled, config):
     if trip_duration_days == 0:
         return 0
     
@@ -198,7 +196,9 @@ def get_efficiency_bonus(trip_duration_days, miles_traveled, config=DEFAULT_CONF
     
     return 0
 
-def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_amount, debug=False, config=DEFAULT_CONFIG):
+def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_amount, debug=False, config=None):
+    if config is None:
+        config = DEFAULT_CONFIG.copy() # Ensure a consistent config object
     
     # --- Input Sanitization ---
     trip_duration_days = clean_and_convert(trip_duration_days, int)
@@ -256,7 +256,7 @@ def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_a
         return round_legacy(computed_total)
         
     # --- New Two-Tier Logic for Long Trips ---
-    if trip_duration_days >= 10:
+    if trip_duration_days >= config["long_trip_duration_threshold"]:
         path = "LONG_TRIP_TWO_TIER"
         receipt_path = "LONG_TRIP_SWEET_SPOT_TIERS"
         
@@ -290,7 +290,8 @@ def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_a
             receipt_total = reimbursable * pct_low_tier
 
         computed_total = per_diem_total + mileage_total + receipt_total + efficiency_bonus
-
+        
+        # This path should be self-contained and not call get_receipt_total
         if debug:
             miles_per_day = miles_traveled / trip_duration_days if trip_duration_days > 0 else 0
             return {
@@ -335,25 +336,13 @@ if __name__ == '__main__':
         reimbursement = calculate_reimbursement(
             trip_duration_days,
             miles_traveled,
-            total_receipts_amount
+            total_receipts_amount,
+            config=DEFAULT_CONFIG
         )
         # Ensure output is formatted to exactly two decimal places
         print(f"{reimbursement:.2f}")
-    elif len(sys.argv) == 5: # Add a debug mode
-        trip_duration_days = sys.argv[1]
-        miles_traveled = sys.argv[2]
-        total_receipts_amount = sys.argv[3]
-        
-        debug_info = calculate_reimbursement(
-            trip_duration_days,
-            miles_traveled,
-            total_receipts_amount,
-            debug=True,
-            config=DEFAULT_CONFIG
-        )
-        print(json.dumps(debug_info, indent=2))
     else:
-        # This part is for local testing and analysis, not used by eval.sh
+        # Running for testing with public_cases.json
         with open('public_cases.json', 'r') as f:
             cases = json.load(f)
         
